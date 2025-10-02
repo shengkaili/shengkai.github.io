@@ -41,14 +41,14 @@
   .footer h3 { color:var(--ink); margin:12px 0 6px; }
   pre.codeblock { background:#121a33; color:#e7f0ff; padding:12px; border-radius:10px; overflow:auto; }
 
-  /* slider panel */
   .sliders{background:var(--panel);border-radius:16px;padding:12px}
   .sliders h3{margin:4px 0 8px;font-size:16px}
-  .slider-row{display:grid;grid-template-columns:96px 1fr 64px;gap:10px;align-items:center;margin:8px 0}
+  .slider-row{display:grid;grid-template-columns:120px 1fr 64px;gap:10px;align-items:center;margin:8px 0}
   input[type="range"]{width:100%}
   .note{color:var(--muted); font-size:14px; margin-top:6px}
   .disabled-tip{font-size:13px;color:#d9a6c7}
   .lock{display:inline-block;margin-left:6px;padding:0 8px;border:1px solid #2a3872;border-radius:999px;color:#d9a6c7}
+  .hide{display:none!important}
 </style>
 </head>
 <body>
@@ -126,6 +126,19 @@
         <div><span id="v_d">0.50</span></div>
       </div>
 
+      <!-- Adaptive-only sliders -->
+      <div id="row_xL" class="slider-row hide">
+        <label for="s_xL">Trigger low (xL)</label>
+        <input id="s_xL" type="range" min="0.10" max="2.40" step="0.01" value="0.6">
+        <div><span id="v_xL">0.60</span></div>
+      </div>
+
+      <div id="row_xH" class="slider-row hide">
+        <label for="s_xH">Trigger high (xH)</label>
+        <input id="s_xH" type="range" min="0.10" max="2.40" step="0.01" value="0.9">
+        <div><span id="v_xH">0.90</span></div>
+      </div>
+
       <div class="note">
         <b>Note:</b> <code>d</code> is the reduced carrying capacity factor when dose is ON:
         \(K_\text{eff}=K_0\cdot d\). Sliders are editable only while <b>Paused</b>.
@@ -162,14 +175,11 @@ let initPt={S:x.S, R:x.R};
 const dosePill=id('dosePill'), rdDose=id('doseState'), rdMode=id('modeName'),
       rdAvg=id('avgXR'), rdT=id('time');
 
-const sliders = {
-  rS:  id('s_rS'),  rR:  id('s_rR'),
-  aRS: id('s_aRS'), aSR: id('s_aSR'),
-  d:   id('s_d'),
-};
-const values = {
-  rS: id('v_rS'), rR: id('v_rR'), aRS: id('v_aRS'), aSR: id('v_aSR'), d: id('v_d')
-};
+const sliders = { rS:id('s_rS'), rR:id('s_rR'), aRS:id('s_aRS'), aSR:id('s_aSR'), d:id('s_d'),
+                  xL:id('s_xL'), xH:id('s_xH') };
+const values  = { rS:id('v_rS'), rR:id('v_rR'), aRS:id('v_aRS'), aSR:id('v_aSR'), d:id('v_d'),
+                  xL:id('v_xL'), xH:id('v_xH') };
+const row_xL = id('row_xL'), row_xH = id('row_xH');
 const lockHint = id('lockHint'), disabledTip = id('disabledTip');
 
 id('m1').onclick=()=>switchMode(1);
@@ -188,22 +198,43 @@ document.addEventListener('keydown', (e)=>{
 });
 cv.addEventListener('click', manualToggle);
 
-// Hook slider events: only apply when paused
+// Slider hooks: active only when paused. xL/xH only visible in Adaptive.
 Object.keys(sliders).forEach(k=>{
   sliders[k].addEventListener('input', ()=>{
-    if(!paused) return;             // ignore while running
-    P[k] = parseFloat(sliders[k].value);
-    values[k].textContent = P[k].toFixed(2);
-    draw();                         // reflect changes immediately (field/nullclines)
+    if(!paused) return;
+    // handle xL/xH coupling
+    if(k==='xL' || k==='xH'){
+      let xLval = parseFloat(sliders.xL.value);
+      let xHval = parseFloat(sliders.xH.value);
+      const eps = 0.01;
+      if(k==='xL' && xLval >= xHval - eps){ xLval = xHval - eps; sliders.xL.value = xLval.toFixed(2); }
+      if(k==='xH' && xHval <= xLval + eps){ xHval = xLval + eps; sliders.xH.value = xHval.toFixed(2); }
+      P.xL = parseFloat(sliders.xL.value);
+      P.xH = parseFloat(sliders.xH.value);
+      values.xL.textContent = P.xL.toFixed(2);
+      values.xH.textContent = P.xH.toFixed(2);
+    }else{
+      P[k] = parseFloat(sliders[k].value);
+      values[k].textContent = P[k].toFixed(2);
+    }
+    draw(); // reflect immediately
   });
 });
 
 function setSlidersEnabled(enabled){
-  Object.values(sliders).forEach(el=>el.disabled = !enabled);
+  // base sliders
+  ['rS','rR','aRS','aSR','d'].forEach(k=> sliders[k].disabled = !enabled);
+  // adaptive-only sliders shown & enabled only in adaptive
+  const inAdaptive = (mode===2);
+  row_xL.classList.toggle('hide', !inAdaptive);
+  row_xH.classList.toggle('hide', !inAdaptive);
+  sliders.xL.disabled = !(enabled && inAdaptive);
+  sliders.xH.disabled = !(enabled && inAdaptive);
+
   lockHint.style.display = enabled ? 'none' : 'inline-block';
   disabledTip.style.display = enabled ? 'none' : 'block';
 }
-setSlidersEnabled(false); // start running => disabled
+setSlidersEnabled(false);
 
 function togglePause(){
   paused = !paused;
@@ -244,7 +275,7 @@ function step(){
     x=rk4(x.S,x.R,dose,P.dt/4);
     t+=P.dt/4; avgR+=x.R*(P.dt/4); avgT+=P.dt/4;
   }
-  traj.push({S:x.S,R:x.R}); // keep full history
+  traj.push({S:x.S,R:x.R});
   rdT.textContent=t.toFixed(1);
   rdAvg.textContent=avgT? (avgR/avgT).toFixed(3) : '—';
   rdDose.textContent=dose?'ON':'OFF';
@@ -288,6 +319,12 @@ function draw(){
   drawAxisLabelHorizontal_simple("Sensitive cell (xS)", mapX(P.xSmax/2), mapY(0)+30);
   drawAxisLabelVertical_simple("Resistant cell (xR)",   mapX(0)-36,      mapY(P.xRmax/2));
 
+  // Adaptive-only borders xS+xR=xL, xS+xR=xH
+  if(mode===2){
+    drawBorderLine(P.xL, mapX, mapY);
+    drawBorderLine(P.xH, mapX, mapY);
+  }
+
   // vector field with arrowheads
   const grid=24;
   const arrowColor = dose ? "rgba(255,110,199,0.80)" : "rgba(230,238,252,0.40)";
@@ -318,7 +355,7 @@ function draw(){
     }
   }
 
-  // nullclines
+  // nullclines (line width doubled)
   drawNullcline_S(P.K0,        "rgba(154,230,110,0.95)", false, mapX, mapY);
   drawNullcline_S(P.K0*P.d,    "rgba(154,230,110,0.60)", true,  mapX, mapY);
   drawNullcline_R(P.K0,        "rgba(255,107,107,0.95)", false, mapX, mapY);
@@ -352,8 +389,33 @@ function drawAxisLabelVertical_simple(text, x, y){
   ctx.restore();
 }
 
+// draw xS + xR = c (light gray dotted), clipped to window
+function drawBorderLine(c, mapX, mapY){
+  const Smin = Math.max(0, c - P.xRmax);
+  const Smax = Math.min(P.xSmax, c);
+  if(Smax < Smin) return;
+
+  ctx.save();
+  ctx.setLineDash([5,7]);
+  ctx.strokeStyle = "rgba(220,226,240,0.55)";
+  ctx.lineWidth = 1.2;
+
+  ctx.beginPath();
+  const steps=200;
+  for(let i=0;i<=steps;i++){
+    const S = Smin + (Smax - Smin)*i/steps;
+    const R = c - S;
+    const X=mapX(S), Y=mapY(R);
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// Nullclines (doubled thickness from before)
 function drawNullcline_S(K,color,dashed,mapX,mapY){
-  ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.setLineDash(dashed?[6,6]:[]);
+  ctx.strokeStyle=color; ctx.lineWidth=3.2; ctx.setLineDash(dashed?[6,6]:[]);
   ctx.beginPath();
   for(let i=0;i<=200;i++){
     const XS=i/200*P.xSmax, XR=Math.max(0,(K-XS)/P.aRS);
@@ -363,7 +425,7 @@ function drawNullcline_S(K,color,dashed,mapX,mapY){
   ctx.stroke(); ctx.setLineDash([]);
 }
 function drawNullcline_R(K,color,dashed,mapX,mapY){
-  ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.setLineDash(dashed?[6,6]:[]);
+  ctx.strokeStyle=color; ctx.lineWidth=3.2; ctx.setLineDash(dashed?[6,6]:[]);
   ctx.beginPath();
   for(let i=0;i<=200;i++){
     const XR=i/200*P.xRmax, XS=Math.max(0,(K-XR)/P.aSR);
@@ -382,6 +444,8 @@ function switchMode(m){
   rdMode.textContent = {1:'Manual',2:'Adaptive',3:'Random',4:'Metronomic'}[mode];
   dose=0; seg=(mode===3? rng()*P.TR : mode===4? P.TR/2 : 0);
   rdDose.textContent='OFF'; dosePill.classList.remove('on');
+  // Show/hide adaptive-only sliders when switching modes; keep pause gating
+  setSlidersEnabled(paused);
 }
 function manualToggle(){
   if(mode===1){
@@ -395,6 +459,15 @@ function resetAll(){
   initPt={S:x.S, R:x.R};
   dose=0; seg=(mode===3? rng()*P.TR : mode===4? P.TR/2 : 0);
   rdDose.textContent='OFF'; dosePill.classList.remove('on');
+
+  // sync slider displays with P (if you had changed ranges programmatically)
+  values.rS.textContent=P.rS.toFixed(2); sliders.rS.value=P.rS.toFixed(2);
+  values.rR.textContent=P.rR.toFixed(2); sliders.rR.value=P.rR.toFixed(2);
+  values.aRS.textContent=P.aRS.toFixed(2); sliders.aRS.value=P.aRS.toFixed(2);
+  values.aSR.textContent=P.aSR.toFixed(2); sliders.aSR.value=P.aSR.toFixed(2);
+  values.d.textContent=P.d.toFixed(2); sliders.d.value=P.d.toFixed(2);
+  values.xL.textContent=P.xL.toFixed(2); sliders.xL.value=P.xL.toFixed(2);
+  values.xH.textContent=P.xH.toFixed(2); sliders.xH.value=P.xH.toFixed(2);
 }
 function mulberry32(a){
   return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,61|t); return((t^(t>>>14))>>>0)/4294967296; }
