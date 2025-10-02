@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Phase Portrait Dosing Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg:#0b1020; --panel:#121a33; --ink:#e6eefc; --muted:#9bb0d3;
+    --accent:#88c0ff; --accent2:#ffd166; --good:#9ae66e; --bad:#ff6b6b;
+    --pink:#ff6ec7; --pinkDim:rgba(255,110,199,0.55);
+  }
+  html,body{
+    height:100%; margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px;
+  }
+  .wrap{max-width:1100px; margin:28px auto; padding:0 16px}
+  h1{margin:0 0 12px; font-weight:800; font-size:22px}
+  .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0 10px; font-size:15px}
+  .toolbar .group{display:flex; flex-wrap:wrap; gap:6px; margin-right:14px}
+  button{
+    background:#1b264d; color:var(--ink); border:1px solid #2a3872; border-radius:12px;
+    padding:8px 12px; cursor:pointer; font-weight:600; font-size:15px
+  }
+  button:hover{background:#22306b} button.active{outline:2px solid var(--accent)}
+  .pill{display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid #30407d; color:var(--muted)}
+  .pill.on{background:rgba(255,110,199,0.12); border-color:var(--pink); color:var(--pink)}
+  .big-note{
+    margin:8px 0 0; padding:10px 12px; border:1px dashed var(--pink);
+    border-radius:10px; color:var(--ink); font-weight:700; font-size:18px;
+    background:rgba(255,110,199,0.10)
+  }
+  .canvasbox{background:var(--panel); border-radius:16px; padding:12px}
+  canvas{width:100%; height:560px; display:block; background:#0c1534; border-radius:12px}
+  .legend{margin-top:10px; color:var(--muted); font-size:15px; display:flex; flex-wrap:wrap; gap:20px; align-items:center}
+  .legend .title{font-weight:700; color:var(--ink)}
+  .legend span{display:flex; align-items:center; gap:6px}
+  .swatch{width:30px; height:0; border-bottom:3px solid currentColor}
+  .dashed{border-bottom-style:dashed}
+  .legend2{margin-top:6px; color:var(--muted); font-size:15px}
+  .legend2 .chip{display:inline-flex; align-items:center; gap:6px; margin-right:16px}
+  .chip .line{width:38px; height:0; border-bottom:3px solid var(--accent2)}
+  .dot{display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--accent2)}
+
+  /* footer text */
+  .footer { max-width:1100px; margin:16px auto 28px; padding:0 16px; color:var(--muted); line-height:1.5; }
+  .footer h3 { color:var(--ink); margin:12px 0 6px; }
+  pre.codeblock { background:#121a33; color:#e7f0ff; padding:12px; border-radius:10px; overflow:auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phase Portrait Dosing Game</h1>
+
+  <div class="toolbar">
+    <div class="group">
+      <span class="pill">Mode:</span>
+      <button id="m1">1 Manual</button>
+      <button id="m2">2 Adaptive</button>
+      <button id="m3">3 Random</button>
+      <button id="m4">4 Metronomic</button>
+    </div>
+    <div class="group">
+      <button id="reset">Reset</button>
+      <button id="pause">Pause</button>
+      <button id="toggle">Toggle dose (SPACE/click)</button>
+    </div>
+    <span id="dosePill" class="pill">Dose u(t): <b id="doseState">OFF</b></span>
+    <span class="pill">Mode: <b id="modeName">Manual</b></span>
+    <span class="pill">Avg xR: <b id="avgXR">—</b></span>
+    <span class="pill">t: <b id="time">0.0</b></span>
+  </div>
+
+  <div class="big-note">Hit <span style="color:var(--pink);">SPACEBAR</span> to turn drug <b>ON</b> or <b>OFF</b>.</div>
+
+  <div class="canvasbox">
+    <canvas id="cv" width="1024" height="560"></canvas>
+  </div>
+
+  <div class="legend">
+    <span class="title">Nullclines:</span>
+    <span style="color:var(--good)"><i class="swatch"></i>dxS=0 OFF</span>
+    <span style="color:var(--good)"><i class="swatch dashed"></i>dxS=0 ON</span>
+    <span style="color:var(--bad)"><i class="swatch"></i>dxR=0 OFF</span>
+    <span style="color:var(--bad)"><i class="swatch dashed"></i>dxR=0 ON</span>
+  </div>
+  <div class="legend2">
+    <span class="chip"><span class="line"></span>Trajectory (solid yellow)</span>
+    <span class="chip"><span class="dot"></span>Initial cell population (solid yellow dot)</span>
+  </div>
+</div>
+
+<!-- Footer: Goal / Controls & Equations -->
+<div class="footer">
+  <p><b>Goal:</b> keep resistant cells low. Lower time-avg xR is better.
+  <b>Controls:</b> SPACE/click toggles dose (Manual). Keys 1–4 switch mode.</p>
+
+  <h3>Differential Equations</h3>
+  <pre class="codeblock">dxS/dt = rS xS ( 1 - (xS + aRS xR) / K_eff )
+dxR/dt = rR xR ( 1 - (xR + aSR xS) / K_eff )
+
+where
+K_eff = K0            (dose OFF)
+K_eff = K0 · d        (dose ON)</pre>
+</div>
+
+<script>
+/* =================== Utilities & DOM =================== */
+function id(s){ return document.getElementById(s); }
+
+/* =================== Parameters =================== */
+const P={rS:0.8,rR:0.6,aRS:0.8,aSR:0.9,K0:1,d:0.5,xH:0.9,xL:0.6,TR:10,dt:0.01,xSmax:1.4,xRmax:1.0};
+const cv=id('cv'), ctx=cv.getContext('2d'); const W=cv.width, H=cv.height;
+
+/* =================== State =================== */
+let mode=1, dose=0, paused=false, t=0;
+let x={S:0.5, R:0.1}, traj=[], avgR=0, avgT=0, seg=0, rng=mulberry32(1);
+
+/* =================== UI Handles =================== */
+const dosePill=id('dosePill'), rdDose=id('doseState'), rdMode=id('modeName'),
+      rdAvg=id('avgXR'), rdT=id('time');
+
+/* =================== Wire up controls =================== */
+id('m1').onclick=()=>switchMode(1);
+id('m2').onclick=()=>switchMode(2);
+id('m3').onclick=()=>switchMode(3);
+id('m4').onclick=()=>switchMode(4);
+id('reset').onclick=resetAll;
+id('pause').onclick=()=>{ paused=!paused; id('pause').textContent=paused?'Resume':'Pause'; };
+id('toggle').onclick=manualToggle;
+document.addEventListener('keydown', (e)=>{
+  if(e.code==='Space'){ e.preventDefault(); manualToggle(); }
+  if(e.key==='1')switchMode(1);
+  if(e.key==='2')switchMode(2);
+  if(e.key==='3')switchMode(3);
+  if(e.key==='4')switchMode(4);
+});
+cv.addEventListener('click', manualToggle);
+
+/* =================== Dynamics =================== */
+function Keff(u){ return P.K0*(1-u*(1-P.d)); }
+function f(S,R,u){
+  const K=Keff(u);
+  return { dS: P.rS*S*(1-(S+P.aRS*R)/K),
+           dR: P.rR*R*(1-(R+P.aSR*S)/K) };
+}
+function rk4(S,R,u,dt){
+  const k1=f(S,R,u),
+        k2=f(S+0.5*dt*k1.dS, R+0.5*dt*k1.dR, u),
+        k3=f(S+0.5*dt*k2.dS, R+0.5*dt*k2.dR, u),
+        k4=f(S+dt*k3.dS,     R+dt*k3.dR,     u);
+  const nS=S+(dt/6)*(k1.dS+2*k2.dS+2*k3.dS+k4.dS);
+  const nR=R+(dt/6)*(k1.dR+2*k2.dR+2*k3.dR+k4.dR);
+  return {S:Math.max(0,nS), R:Math.max(0,nR)};
+}
+
+/* =================== Simulation step =================== */
+function chooseDose(dt){
+  if(mode===2){
+    const tot=x.S+x.R;
+    if(dose===0 && tot>=P.xH) dose=1;
+    if(dose===1 && tot<=P.xL) dose=0;
+  }else if(mode===3){
+    seg-=dt; if(seg<=0){ dose=1-dose; seg=rng()*P.TR; }
+  }else if(mode===4){
+    seg-=dt; if(seg<=0){ dose=1-dose; seg=P.TR/2; }
+  }
+}
+function step(){
+  for(let k=0;k<4;k++){
+    chooseDose(P.dt/4);
+    x=rk4(x.S,x.R,dose,P.dt/4);
+    t+=P.dt/4; avgR+=x.R*(P.dt/4); avgT+=P.dt/4;
+  }
+  traj.push({S:x.S,R:x.R}); if(traj.length>6000) traj.shift();
+  rdT.textContent=t.toFixed(1);
+  rdAvg.textContent=avgT? (avgR/avgT).toFixed(3) : '—';
+  rdDose.textContent=dose?'ON':'OFF';
+  dosePill.classList.toggle('on', !!dose);
+}
+
+/* =================== Drawing (equal scale, centered labels, ticks) =================== */
+function draw(){
+  ctx.fillStyle="#0c1534"; ctx.fillRect(0,0,W,H);
+
+  // equal scaling
+  const margin=56;
+  const scaleX=(W-2*margin)/P.xSmax, scaleY=(H-2*margin)/P.xRmax;
+  const SCL=Math.min(scaleX,scaleY);
+  const x0=margin, y0=H-margin;
+  const mapX=S=>x0+S*SCL, mapY=R=>y0-R*SCL;
+
+  // axes
+  ctx.strokeStyle="rgba(255,255,255,0.30)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mapX(0),mapY(0)); ctx.lineTo(mapX(P.xSmax),mapY(0)); ctx.stroke();  // x-axis
+  ctx.beginPath(); ctx.moveTo(mapX(0),mapY(0)); ctx.lineTo(mapX(0),mapY(P.xRmax)); ctx.stroke();  // y-axis
+
+  // ticks & labels at 0 and 1
+  const tick = 6;
+  ctx.strokeStyle="rgba(255,255,255,0.55)"; ctx.lineWidth=1;
+  // x ticks
+  ctx.beginPath();
+  ctx.moveTo(mapX(0), mapY(0)-tick); ctx.lineTo(mapX(0), mapY(0)+tick);
+  ctx.moveTo(mapX(1), mapY(0)-tick); ctx.lineTo(mapX(1), mapY(0)+tick);
+  ctx.stroke();
+  ctx.fillStyle="rgba(230,238,252,0.95)"; ctx.font="15px sans-serif";
+  ctx.textAlign="center"; ctx.textBaseline="top";
+  ctx.fillText("0", mapX(0), mapY(0)+tick+2);
+  ctx.fillText("1", mapX(1), mapY(0)+tick+2);
+  // y ticks
+  ctx.beginPath();
+  ctx.moveTo(mapX(0)-tick, mapY(0)); ctx.lineTo(mapX(0)+tick, mapY(0));
+  ctx.moveTo(mapX(0)-tick, mapY(1)); ctx.lineTo(mapX(0)+tick, mapY(1));
+  ctx.stroke();
+  ctx.textAlign="right"; ctx.textBaseline="middle";
+  ctx.fillText("0", mapX(0)-tick-2, mapY(0));
+  ctx.fillText("1", mapX(0)-tick-2, mapY(1));
+
+  // centered axis labels (no subscripts): xS, xR
+  drawAxisLabelHorizontal_simple("Sensitive cell (xS)", mapX(P.xSmax/2), mapY(0)+30);
+  drawAxisLabelVertical_simple("Resistant cell (xR)",   mapX(0)-36,      mapY(P.xRmax/2));
+
+  // vector field (grey when OFF, pink when ON)
+  const grid=24; const arrowColor = dose ? "rgba(255,110,199,0.55)" : "rgba(230,238,252,0.28)";
+  for(let i=0;i<grid;i++){
+    for(let j=0;j<grid;j++){
+      const XS=i/(grid-1)*P.xSmax, XR=j/(grid-1)*P.xRmax;
+      const v=f(XS,XR,dose); let vx=v.dS, vy=v.dR; const L=Math.hypot(vx,vy)||1; vx/=L; vy/=L;
+      const cx=mapX(XS), cy=mapY(XR), s=11;
+      ctx.strokeStyle=arrowColor;
+      ctx.beginPath(); ctx.moveTo(cx-s*vx, cy+s*vy); ctx.lineTo(cx+s*vx, cy-s*vy); ctx.stroke();
+    }
+  }
+
+  // nullclines (OFF solid, ON dashed)
+  drawNullcline_S(P.K0,        "rgba(154,230,110,0.95)", false, mapX, mapY);
+  drawNullcline_S(P.K0*P.d,    "rgba(154,230,110,0.60)", true,  mapX, mapY);
+  drawNullcline_R(P.K0,        "rgba(255,107,107,0.95)", false, mapX, mapY);
+  drawNullcline_R(P.K0*P.d,    "rgba(255,107,107,0.60)", true,  mapX, mapY);
+
+  // trajectory (solid yellow)
+  ctx.strokeStyle="#ffd166"; ctx.lineWidth=2.6; ctx.beginPath();
+  for(let i=0;i<traj.length;i++){
+    const X=mapX(traj[i].S), Y=mapY(traj[i].R);
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke();
+
+  // start point (solid yellow dot)
+  if(traj.length){
+    ctx.fillStyle="#ffd166";
+    ctx.beginPath(); ctx.arc(mapX(traj[0].S), mapY(traj[0].R), 4.5, 0, 2*Math.PI); ctx.fill();
+  }
+}
+
+/* ---------- Axis label helpers (simple) ---------- */
+function drawAxisLabelHorizontal_simple(text, x, y){
+  ctx.fillStyle="rgba(230,238,252,0.95)"; ctx.font="17px sans-serif";
+  const w=ctx.measureText(text).width;
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillText(text, x - w/2, y);
+}
+function drawAxisLabelVertical_simple(text, x, y){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillStyle="rgba(230,238,252,0.95)"; ctx.font="17px sans-serif";
+  const w=ctx.measureText(text).width;
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillText(text, -w/2, 0);
+  ctx.restore();
+}
+
+/* ---------- Nullcline helpers ---------- */
+function drawNullcline_S(K,color,dashed,mapX,mapY){
+  ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.setLineDash(dashed?[6,6]:[]);
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const XS=i/200*P.xSmax, XR=Math.max(0,(K-XS)/P.aRS);
+    const X=mapX(XS), Y=mapY(XR);
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+function drawNullcline_R(K,color,dashed,mapX,mapY){
+  ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.setLineDash(dashed?[6,6]:[]);
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const XR=i/200*P.xRmax, XS=Math.max(0,(K-XR)/P.aSR);
+    const X=mapX(XS), Y=mapY(XR);
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+
+/* =================== Loop =================== */
+function loop(){ if(!paused){ step(); } draw(); requestAnimationFrame(loop); }
+
+/* =================== Mode & Init =================== */
+function switchMode(m){
+  mode=m;
+  ['m1','m2','m3','m4'].forEach(k=>id(k).classList.remove('active'));
+  id('m'+mode).classList.add('active');
+  rdMode.textContent = {1:'Manual',2:'Adaptive',3:'Random',4:'Metronomic'}[mode];
+  dose=0; seg=(mode===3? rng()*P.TR : mode===4? P.TR/2 : 0);
+  rdDose.textContent='OFF'; dosePill.classList.remove('on');
+}
+function manualToggle(){
+  if(mode===1){
+    dose=1-dose;
+    rdDose.textContent=dose?'ON':'OFF';
+    dosePill.classList.toggle('on', !!dose);
+  }
+}
+function resetAll(){
+  x={S:0.5,R:0.1}; t=0; avgR=0; avgT=0; traj=[];
+  dose=0; seg=(mode===3? rng()*P.TR : mode===4? P.TR/2 : 0);
+  rdDose.textContent='OFF'; dosePill.classList.remove('on');
+}
+function mulberry32(a){
+  return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,61|t); return((t^(t>>>14))>>>0)/4294967296; }
+}
+
+/* Kickoff */
+switchMode(1);
+resetAll();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
