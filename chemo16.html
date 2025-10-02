@@ -12,7 +12,7 @@
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);
     font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:16px}
-  .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
+  .wrap{max-width:1100px;margin:24px auto 16px;padding:0 16px}
   h1{margin:0 0 12px;font-weight:800;font-size:22px}
   .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 10px;font-size:15px}
   .toolbar .group{display:flex;flex-wrap:wrap;gap:6px;margin-right:14px}
@@ -24,7 +24,9 @@
   .big-note{margin:8px 0 0; padding:10px 12px; border:1px dashed var(--pink);
     border-radius:10px; color:var(--ink); font-weight:700; font-size:18px;
     background:rgba(255,110,199,0.10)}
-  .canvasbox{background:var(--panel);border-radius:16px;padding:12px}
+  .panel{background:var(--panel);border-radius:16px;padding:12px}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:980px){ .grid{grid-template-columns: 2fr 1fr;gap:16px} }
   canvas{width:100%;height:560px;display:block;background:#0c1534;border-radius:12px}
   .legend{margin-top:10px;color:var(--muted);font-size:15px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
   .legend .title{font-weight:700;color:var(--ink)}
@@ -38,6 +40,15 @@
   .footer { max-width:1100px; margin:16px auto 28px; padding:0 16px; color:var(--muted); line-height:1.5; }
   .footer h3 { color:var(--ink); margin:12px 0 6px; }
   pre.codeblock { background:#121a33; color:#e7f0ff; padding:12px; border-radius:10px; overflow:auto; }
+
+  /* slider panel */
+  .sliders{background:var(--panel);border-radius:16px;padding:12px}
+  .sliders h3{margin:4px 0 8px;font-size:16px}
+  .slider-row{display:grid;grid-template-columns:96px 1fr 64px;gap:10px;align-items:center;margin:8px 0}
+  input[type="range"]{width:100%}
+  .note{color:var(--muted); font-size:14px; margin-top:6px}
+  .disabled-tip{font-size:13px;color:#d9a6c7}
+  .lock{display:inline-block;margin-left:6px;padding:0 8px;border:1px solid #2a3872;border-radius:999px;color:#d9a6c7}
 </style>
 </head>
 <body>
@@ -65,20 +76,62 @@
 
   <div class="big-note">Hit <span style="color:var(--pink);">SPACEBAR</span> to turn drug <b>ON</b> or <b>OFF</b>.</div>
 
-  <div class="canvasbox">
-    <canvas id="cv" width="1024" height="560"></canvas>
-  </div>
+  <div class="grid">
+    <div class="panel">
+      <canvas id="cv" width="1024" height="560"></canvas>
 
-  <div class="legend">
-    <span class="title">Nullclines:</span>
-    <span style="color:var(--good)"><i class="swatch"></i>dxS=0 OFF</span>
-    <span style="color:var(--good)"><i class="swatch dashed"></i>dxS=0 ON</span>
-    <span style="color:var(--bad)"><i class="swatch"></i>dxR=0 OFF</span>
-    <span style="color:var(--bad)"><i class="swatch dashed"></i>dxR=0 ON</span>
-  </div>
-  <div class="legend2">
-    <span class="chip"><span class="line"></span>Trajectory (solid yellow)</span>
-    <span class="chip"><span class="dot"></span>Initial cell population (solid yellow dot)</span>
+      <div class="legend">
+        <span class="title">Nullclines:</span>
+        <span style="color:var(--good)"><i class="swatch"></i>dxS=0 OFF</span>
+        <span style="color:var(--good)"><i class="swatch dashed"></i>dxS=0 ON</span>
+        <span style="color:var(--bad)"><i class="swatch"></i>dxR=0 OFF</span>
+        <span style="color:var(--bad)"><i class="swatch dashed"></i>dxR=0 ON</span>
+      </div>
+      <div class="legend2">
+        <span class="chip"><span class="line"></span>Trajectory (solid yellow)</span>
+        <span class="chip"><span class="dot"></span>Initial cell population (solid yellow dot)</span>
+      </div>
+    </div>
+
+    <div class="sliders">
+      <h3>Parameters <span id="lockHint" class="lock" style="display:none;">Pause to edit</span></h3>
+
+      <div class="slider-row">
+        <label for="s_rS">rS</label>
+        <input id="s_rS" type="range" min="0.2" max="1.2" step="0.01" value="0.8">
+        <div><span id="v_rS">0.80</span></div>
+      </div>
+
+      <div class="slider-row">
+        <label for="s_rR">rR</label>
+        <input id="s_rR" type="range" min="0.2" max="1.2" step="0.01" value="0.6">
+        <div><span id="v_rR">0.60</span></div>
+      </div>
+
+      <div class="slider-row">
+        <label for="s_aRS">aRS</label>
+        <input id="s_aRS" type="range" min="0.4" max="1.6" step="0.01" value="0.8">
+        <div><span id="v_aRS">0.80</span></div>
+      </div>
+
+      <div class="slider-row">
+        <label for="s_aSR">aSR</label>
+        <input id="s_aSR" type="range" min="0.4" max="1.6" step="0.01" value="0.9">
+        <div><span id="v_aSR">0.90</span></div>
+      </div>
+
+      <div class="slider-row">
+        <label for="s_d">d</label>
+        <input id="s_d" type="range" min="0.10" max="1.00" step="0.01" value="0.5">
+        <div><span id="v_d">0.50</span></div>
+      </div>
+
+      <div class="note">
+        <b>Note:</b> <code>d</code> is the reduced carrying capacity factor when dose is ON:
+        \(K_\text{eff}=K_0\cdot d\). Sliders are editable only while <b>Paused</b>.
+        <div class="disabled-tip" id="disabledTip" style="display:none;margin-top:4px;">Running… press <b>Pause</b> to edit parameters.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -104,17 +157,27 @@ const cv=id('cv'), ctx=cv.getContext('2d'); const W=cv.width, H=cv.height;
 
 let mode=1, dose=0, paused=false, t=0;
 let x={S:0.5, R:0.1}, traj=[], avgR=0, avgT=0, seg=0, rng=mulberry32(1);
-let initPt={S:x.S, R:x.R};   // anchor initial point
+let initPt={S:x.S, R:x.R};
 
 const dosePill=id('dosePill'), rdDose=id('doseState'), rdMode=id('modeName'),
       rdAvg=id('avgXR'), rdT=id('time');
+
+const sliders = {
+  rS:  id('s_rS'),  rR:  id('s_rR'),
+  aRS: id('s_aRS'), aSR: id('s_aSR'),
+  d:   id('s_d'),
+};
+const values = {
+  rS: id('v_rS'), rR: id('v_rR'), aRS: id('v_aRS'), aSR: id('v_aSR'), d: id('v_d')
+};
+const lockHint = id('lockHint'), disabledTip = id('disabledTip');
 
 id('m1').onclick=()=>switchMode(1);
 id('m2').onclick=()=>switchMode(2);
 id('m3').onclick=()=>switchMode(3);
 id('m4').onclick=()=>switchMode(4);
 id('reset').onclick=resetAll;
-id('pause').onclick=()=>{ paused=!paused; id('pause').textContent=paused?'Resume':'Pause'; };
+id('pause').onclick=togglePause;
 id('toggle').onclick=manualToggle;
 document.addEventListener('keydown', (e)=>{
   if(e.code==='Space'){ e.preventDefault(); manualToggle(); }
@@ -124,6 +187,29 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='4')switchMode(4);
 });
 cv.addEventListener('click', manualToggle);
+
+// Hook slider events: only apply when paused
+Object.keys(sliders).forEach(k=>{
+  sliders[k].addEventListener('input', ()=>{
+    if(!paused) return;             // ignore while running
+    P[k] = parseFloat(sliders[k].value);
+    values[k].textContent = P[k].toFixed(2);
+    draw();                         // reflect changes immediately (field/nullclines)
+  });
+});
+
+function setSlidersEnabled(enabled){
+  Object.values(sliders).forEach(el=>el.disabled = !enabled);
+  lockHint.style.display = enabled ? 'none' : 'inline-block';
+  disabledTip.style.display = enabled ? 'none' : 'block';
+}
+setSlidersEnabled(false); // start running => disabled
+
+function togglePause(){
+  paused = !paused;
+  id('pause').textContent = paused ? 'Resume' : 'Pause';
+  setSlidersEnabled(paused);
+}
 
 function Keff(u){ return P.K0*(1-u*(1-P.d)); }
 function f(S,R,u){
@@ -158,7 +244,7 @@ function step(){
     x=rk4(x.S,x.R,dose,P.dt/4);
     t+=P.dt/4; avgR+=x.R*(P.dt/4); avgT+=P.dt/4;
   }
-  traj.push({S:x.S,R:x.R}); // <-- no more shifting; start stays anchored
+  traj.push({S:x.S,R:x.R}); // keep full history
   rdT.textContent=t.toFixed(1);
   rdAvg.textContent=avgT? (avgR/avgT).toFixed(3) : '—';
   rdDose.textContent=dose?'ON':'OFF';
@@ -198,11 +284,11 @@ function draw(){
   ctx.fillText("0", mapX(0)-tick-2, mapY(0));
   ctx.fillText("1", mapX(0)-tick-2, mapY(1));
 
-  // centered axis labels
+  // centered axis labels (no subscripts)
   drawAxisLabelHorizontal_simple("Sensitive cell (xS)", mapX(P.xSmax/2), mapY(0)+30);
   drawAxisLabelVertical_simple("Resistant cell (xR)",   mapX(0)-36,      mapY(P.xRmax/2));
 
-  // vector field with ARROWHEADS (grey OFF, pink ON)
+  // vector field with arrowheads
   const grid=24;
   const arrowColor = dose ? "rgba(255,110,199,0.80)" : "rgba(230,238,252,0.40)";
   ctx.lineWidth=1.2;
@@ -222,7 +308,7 @@ function draw(){
 
       // arrowhead
       const ang=Math.atan2(y1s - y0s, x1s - x0s);
-      const head=7; // head length
+      const head=7;
       ctx.beginPath();
       ctx.moveTo(x1s,y1s);
       ctx.lineTo(x1s - head*Math.cos(ang - Math.PI/6), y1s - head*Math.sin(ang - Math.PI/6));
@@ -238,7 +324,7 @@ function draw(){
   drawNullcline_R(P.K0,        "rgba(255,107,107,0.95)", false, mapX, mapY);
   drawNullcline_R(P.K0*P.d,    "rgba(255,107,107,0.60)", true,  mapX, mapY);
 
-  // trajectory (solid yellow) — full history kept
+  // trajectory (solid yellow)
   ctx.strokeStyle="#ffd166"; ctx.lineWidth=2.6; ctx.beginPath();
   for(let i=0;i<traj.length;i++){
     const X=mapX(traj[i].S), Y=mapY(traj[i].R);
@@ -306,7 +392,7 @@ function manualToggle(){
 }
 function resetAll(){
   x={S:0.5, R:0.1}; t=0; avgR=0; avgT=0; traj=[];
-  initPt={S:x.S, R:x.R};           // re-anchor on reset
+  initPt={S:x.S, R:x.R};
   dose=0; seg=(mode===3? rng()*P.TR : mode===4? P.TR/2 : 0);
   rdDose.textContent='OFF'; dosePill.classList.remove('on');
 }
